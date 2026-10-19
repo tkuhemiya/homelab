@@ -1,0 +1,12 @@
+data_dir: /var/lib/vector
+
+sources:
+  journal:
+    type: journald
+
+sinks:
+  axiom:
+    type: axiom
+    inputs: [journal]
+    dataset: homelab
+    token: ${AXIOM_TOKEN}
