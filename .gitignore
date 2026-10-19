@@ -1,0 +1,13 @@
+# Secrets never live in git: configs are *.tmpl rendered from Doppler on the host
+*.env
+.env*
+*.rendered.*
+kubeconfig*
+*.kubeconfig
+k0s_backup_*.tar.gz
+.doppler/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

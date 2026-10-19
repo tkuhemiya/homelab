@@ -1,0 +1,24 @@
+// Tailnet policy for the homelab. Source of truth is this file;
+// paste into https://login.tailscale.com/admin/acls (GitOps action later).
+{
+  "tagOwners": {
+    "tag:lab":   ["autogroup:admin"], // coop, bird, vp1, vp2
+    "tag:agent": ["autogroup:admin"], // later: userspace tailscaled per agent user
+  },
+
+  "grants": [
+    // You (any of your personal devices) reach everything.
+    {"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
+    // Lab nodes talk freely: k0s, Beszel, Gatus checks, CLIProxyAPI.
+    {"src": ["tag:lab"], "dst": ["tag:lab"], "ip": ["*"]},
+    // Agents (once they have their own identity) reach the lab.
+    {"src": ["tag:agent"], "dst": ["tag:lab"], "ip": ["*"]},
+  ],
+
+  "ssh": [
+    // You -> lab nodes. Switch to "check" later if you want periodic re-auth.
+    {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:lab"], "users": ["autogroup:nonroot", "root"]},
+    // Lab -> lab, so an agent on any node can reach every other node.
+    {"action": "accept", "src": ["tag:lab"], "dst": ["tag:lab"], "users": ["autogroup:nonroot", "root"]},
+  ],
+}
