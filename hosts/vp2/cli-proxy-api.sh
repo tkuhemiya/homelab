@@ -5,11 +5,11 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION=8.0.35
+tmp=$(mktemp -d)   # 0700: safe for the rendered config too
+trap 'rm -rf "$tmp"' EXIT
 
 installed=$(cli-proxy-api --help 2>&1 | sed -n 's/^CLIProxyAPI Version: \([^,]*\),.*/\1/p' || true)
 if [ "$installed" != "$VERSION" ]; then
-  tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' EXIT
   base=https://github.com/router-for-me/CLIProxyAPI/releases/download/v$VERSION
   tarball=CLIProxyAPI_${VERSION}_linux_amd64_no-plugin.tar.gz
   curl -fsSL -o "$tmp/$tarball" "$base/$tarball"
@@ -25,8 +25,9 @@ install -d -o root -g cliproxy -m 0750 /etc/cliproxyapi
 install -d -o cliproxy -g cliproxy -m 0700 /var/lib/cliproxyapi/auths
 
 # Config holds upstream keys: readable by root and the service only.
-doppler secrets substitute cli-proxy-api.yaml.tmpl |
-  install -o root -g cliproxy -m 0640 /dev/stdin /etc/cliproxyapi/config.yaml
+# (install can't read from a pipe, so render to a private temp file first.)
+doppler secrets substitute cli-proxy-api.yaml.tmpl > "$tmp/config.yaml"
+install -o root -g cliproxy -m 0640 "$tmp/config.yaml" /etc/cliproxyapi/config.yaml
 
 install -m 0644 cli-proxy-api.service /etc/systemd/system/cli-proxy-api.service
 systemctl daemon-reload
