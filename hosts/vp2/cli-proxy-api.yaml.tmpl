@@ -17,7 +17,9 @@ oauth:
 observability:
   usage:
     usage-statistics-enabled: true   # in-memory usage numbers for the web UI
-{{- if or .GROQ_API_KEY .GEMINI_API_KEY }}
+{{- /* Models must be listed: an upstream with no models gets no traffic.
+       Clients call the alias. Free model lists change; check the provider's /models. */ -}}
+{{- if or .GROQ_API_KEY .GEMINI_API_KEY .OPENROUTER_API_KEY }}
 api-keys:
 {{- if .GEMINI_API_KEY }}
   gemini:
@@ -25,8 +27,9 @@ api-keys:
       keys:
         - api-key: "{{ .GEMINI_API_KEY }}"
 {{- end }}
-{{- if .GROQ_API_KEY }}
+{{- if or .GROQ_API_KEY .OPENROUTER_API_KEY }}
   openai-compatibility:
+{{- if .GROQ_API_KEY }}
     - name: groq
       base-url: "https://api.groq.com/openai/v1"
       keys:
@@ -36,5 +39,27 @@ api-keys:
           alias: "gpt-oss-120b"
         - name: "openai/gpt-oss-20b"
           alias: "gpt-oss-20b"
+        - name: "qwen/qwen3.8-27b"
+          alias: "qwen3.8-27b"
+{{- end }}
+{{- if .OPENROUTER_API_KEY }}
+    - name: openrouter
+      base-url: "https://openrouter.ai/api/v1"
+      keys:
+        - api-key: "{{ .OPENROUTER_API_KEY }}"
+      models:
+        - name: "nvidia/nemotron-3-ultra-550b-a55b:free"
+          alias: "nemotron-3-ultra"
+        - name: "nvidia/nemotron-3-super-120b-a12b:free"
+          alias: "nemotron-3-super"
+        - name: "minimax/minimax-m3.1-flash:free"
+          alias: "minimax-m3.1-flash"
+        - name: "google/gemma-4-31b-it:free"
+          alias: "gemma-4-31b"
+        - name: "cohere/north-mini-code:free"
+          alias: "north-mini-code"
+        - name: "thinkingmachines/inkling:free"
+          alias: "inkling"
+{{- end }}
 {{- end }}
 {{- end }}
