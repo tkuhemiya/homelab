@@ -43,7 +43,7 @@ These run as plain systemd services outside k0s. Each VPS has a `hosts/<node>/bo
 | vp1 | Healthchecks.io | Web UI (SaaS, no host) | No | Gatus pings it using the URL in its config |
 | vp1, vp2 | Agents (Claude Code, Codex, OpenCode) | Their own settings directories | No by default | Revisit if you want their settings versioned |
 
-In short: Beszel and Healthchecks can be set up once in their web UIs. Gatus and CLIProxyAPI need their YAML files in git, since those files hold the alert rules and routing. Those files are committed as templates, and each bootstrap script fills in the secrets from Doppler using that VPS's read-only token (see Secrets and identity).
+In short: Beszel and Healthchecks can be set up once in their web UIs. Gatus and CLIProxyAPI need their YAML files in git, since those files hold the alert rules and routing. Those files are committed as templates, and each bootstrap script fills in the secrets from Doppler using that VPS's read-only Doppler token (see Secrets and identity).
 
 ## k0s cluster
 
@@ -138,7 +138,7 @@ One interface sends a job to whichever free provider has headroom. It starts as 
 Claude Code, T3 Code, Codex and OpenCode are installed directly on bird, coop, vp1 and vp2, outside k0s and Nomad, with full access. They are both the workers and the management interface for the lab.
 
 - **Why outside the cluster:** an agent can fix the cluster when the cluster is broken.
-- **Access:** each agent host reaches the Kubernetes API through the Tailscale API server proxy with full admin access, and gets k0sctl, the burst CLI and its MCP server, `gh`, the CLIProxyAPI endpoint and the Doppler `agents` token.
+- **Access:** each agent host reaches the Kubernetes API through the Tailscale API server proxy with full admin access, and gets k0sctl, the burst CLI and its MCP server, `gh`, the CLIProxyAPI endpoint and the host's Doppler token.
 - **Sessions:** use persistent sessions (zmx, tmux or mosh) so long runs survive disconnects. Use Tailscale SSH to get in from anywhere.
 - **Memory on vp1 and vp2:** a Node-based agent can take a few hundred MB, which competes with Gatus, Beszel and CLIProxyAPI. Run agents there only for light tasks, and keep earlyoom installed so the OOM killer picks the right victim.
 - **Optional isolation later:** for throwaway tasks, smolvm, gondolin or Cloudflare's sandbox SDK can give an agent a disposable sandbox without a hypervisor layer on the host.
@@ -167,10 +167,10 @@ Upstream LLM keys stay in CLIProxyAPI's config (rendered from Doppler, as below)
 
 GitHub, Modal, GCP, Groq, Gatus alert tokens, the Beszel agent key and Langfuse keys live in Doppler. It's hosted, so it keeps working through home outages.
 
-- **Layout:** one `homelab` project with one config per trust zone: `home` (coop, bird, k0s), `vp1`, `vp2` and `agents`. Each zone gets its own read-only service token, so a leaked vp2 token exposes only vp2's config.
+- **Layout:** one `homelab` project with a single `prd` config shared by every host. Each host gets its own read-only service token for that config, so one host's access can be revoked without touching the others.
 - **Hosts:** the service token is stored once per host in root-only Doppler CLI config. Bootstrap scripts render `*.tmpl` configs from git with `doppler secrets substitute` into 0600 files, or start services with `doppler run --`.
-- **k0s:** External Secrets Operator with its Doppler provider syncs the `home` config into Kubernetes Secrets. The `home` token is the one Secret created by hand. ESO keeps you portable if you move off Doppler later.
-- **Agents:** they use the `agents` token only, and always through `doppler run -- <cmd>`, so secret values reach the subprocess's environment and never the transcript. This matters because Langfuse traces send tool outputs off the lab. Claude Code deny rules on `doppler secrets get`, `printenv` and `env` add a speed bump.
+- **k0s:** External Secrets Operator with its Doppler provider syncs the `prd` config into Kubernetes Secrets. Its service token is the one Secret created by hand. ESO keeps you portable if you move off Doppler later.
+- **Agents:** they use the host's token, always through `doppler run -- <cmd>`, so secret values reach the subprocess's environment and never the transcript. This matters because Langfuse traces send tool outputs off the lab. Claude Code deny rules on `doppler secrets get`, `printenv` and `env` add a speed bump.
 - **Free-plan limits to accept:** service tokens are static, so rotate them by hand. The activity log keeps only 3 days, and OIDC identities need the Team plan.
 
 ### Open inside the tailnet
@@ -220,7 +220,7 @@ Flow: you or an agent push to `main`. Flux reconciles `flux/` into k0s, `k0sctl 
 
 Five phases, each finished when its "done when" holds. Phases 3 and 4 can run in parallel.
 
-1. **Foundation.** Create the homelab repo and the Doppler project with one config per trust zone. Write the tailnet policy (open between your devices, Tailscale SSH without browser re-auth) and turn on Tailnet Lock. Set up earlyoom on the small nodes, and log shipping to Axiom. Put agents on every node, CLIProxyAPI on vp2, and Gatus with its Healthchecks.io ping on vp1, all installed by their bootstrap scripts.
+1. **Foundation.** Create the homelab repo and the Doppler project with a single `prd` config and one service token per host. Write the tailnet policy (open between your devices, Tailscale SSH without browser re-auth) and turn on Tailnet Lock. Set up earlyoom on the small nodes, and log shipping to Axiom. Put agents on every node, CLIProxyAPI on vp2, and Gatus with its Healthchecks.io ping on vp1, all installed by their bootstrap scripts.
    - **Done when:** every node ships logs off-lab, and an agent on any node can reach every other node.
 2. **k0s on defaults.** Bring up coop as controller plus worker, and bird as a worker, through k0sctl. vp1 and vp2 stay outside the cluster. Install Flux and the Tailscale operator.
    - **Done when:** a test app is reachable on the tailnet only, and Gatus on vp1 alerts when you stop it.
