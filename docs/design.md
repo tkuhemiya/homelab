@@ -138,7 +138,7 @@ One interface sends a job to whichever free provider has headroom. It starts as 
 Claude Code, T3 Code, Codex and OpenCode are installed directly on bird, coop, vp1 and vp2, outside k0s and Nomad, with full access. They are both the workers and the management interface for the lab.
 
 - **Why outside the cluster:** an agent can fix the cluster when the cluster is broken.
-- **Access:** each agent host reaches the Kubernetes API through the Tailscale API server proxy as `tag:agent`, and gets k0sctl, the burst CLI and its MCP server, `gh`, the CLIProxyAPI endpoint and the Doppler `agents` token.
+- **Access:** each agent host reaches the Kubernetes API through the Tailscale API server proxy with full admin access, and gets k0sctl, the burst CLI and its MCP server, `gh`, the CLIProxyAPI endpoint and the Doppler `agents` token.
 - **Sessions:** use persistent sessions (zmx, tmux or mosh) so long runs survive disconnects. Use Tailscale SSH to get in from anywhere.
 - **Memory on vp1 and vp2:** a Node-based agent can take a few hundred MB, which competes with Gatus, Beszel and CLIProxyAPI. Run agents there only for light tasks, and keep earlyoom installed so the OOM killer picks the right victim.
 - **Optional isolation later:** for throwaway tasks, smolvm, gondolin or Cloudflare's sandbox SDK can give an agent a disposable sandbox without a hypervisor layer on the host.
@@ -153,7 +153,7 @@ Inside the tailnet, the caller's Tailscale identity is the credential, so most s
 | Access | Mechanism | Replaces |
 | --- | --- | --- |
 | Node to node | Tailscale SSH, with tailnet policy rules per tag | SSH keys |
-| Kubernetes API | Tailscale operator API server proxy in auth mode. Tags map to Kubernetes groups, and RBAC binds them: `tag:agent` gets a limited role, you get admin | Admin kubeconfigs on agent hosts |
+| Kubernetes API | Tailscale operator API server proxy in auth mode. Your tailnet identity is bound to cluster-admin, for you and agents alike | Admin kubeconfigs on agent hosts |
 | Your own services (burst MCP server, dispatcher API) | `tailscale serve` identity headers plus app capabilities in grants (for example `can_submit_gpu`) | API tokens |
 | Web UIs (Beszel, Grafana) | tsidp as the OIDC provider | Per-app passwords |
 
@@ -173,10 +173,10 @@ GitHub, Modal, GCP, Groq, Gatus alert tokens, the Beszel agent key and Langfuse 
 - **Agents:** they use the `agents` token only, and always through `doppler run -- <cmd>`, so secret values reach the subprocess's environment and never the transcript. This matters because Langfuse traces send tool outputs off the lab. Claude Code deny rules on `doppler secrets get`, `printenv` and `env` add a speed bump.
 - **Free-plan limits to accept:** service tokens are static, so rotate them by hand. The activity log keeps only 3 days, and OIDC identities need the Team plan.
 
-### Limits of this model
+### Open inside the tailnet
 
-- **Identity is per device, not per process.** On coop, an agent and Gatus are both "coop". To give agents their own identity, run a userspace `tailscaled` as an unprivileged `agent` user tagged `tag:agent`. That only holds if agents aren't root.
-- **coop's disk holds the k0s admin certificates**, so a root agent on coop can bypass the API proxy. Give agents their real cluster access from bird, or run them as non-root.
+Access inside the tailnet is deliberately open. Every device you own can reach and SSH into every other one, and agents get the same full access you have. This is a choice: the tailnet edge is the boundary, and nothing inside it restricts agents. Tailscale identity is per device, so an agent and Gatus on coop are both "coop", and that's fine under this model.
+
 - **Later learning project:** setec, Tailscale's tailnet-native secrets server, granted per tag in the tailnet policy. It needs an AWS KMS key or a TPM to unlock its storage, and if its host goes down, services can't fetch secrets when they restart.
 
 ## Observability and uptime
@@ -220,7 +220,7 @@ Flow: you or an agent push to `main`. Flux reconciles `flux/` into k0s, `k0sctl 
 
 Five phases, each finished when its "done when" holds. Phases 3 and 4 can run in parallel.
 
-1. **Foundation.** Create the homelab repo and the Doppler project with one config per trust zone. Write the tailnet policy (`tag:lab`, `tag:agent`, SSH rules) and turn on Tailnet Lock. Set up earlyoom on the small nodes, and log shipping to Axiom. Put agents on every node, CLIProxyAPI on vp2, and Gatus with its Healthchecks.io ping on vp1, all installed by their bootstrap scripts.
+1. **Foundation.** Create the homelab repo and the Doppler project with one config per trust zone. Write the tailnet policy (open between your devices, Tailscale SSH without browser re-auth) and turn on Tailnet Lock. Set up earlyoom on the small nodes, and log shipping to Axiom. Put agents on every node, CLIProxyAPI on vp2, and Gatus with its Healthchecks.io ping on vp1, all installed by their bootstrap scripts.
    - **Done when:** every node ships logs off-lab, and an agent on any node can reach every other node.
 2. **k0s on defaults.** Bring up coop as controller plus worker, and bird as a worker, through k0sctl. vp1 and vp2 stay outside the cluster. Install Flux and the Tailscale operator.
    - **Done when:** a test app is reachable on the tailnet only, and Gatus on vp1 alerts when you stop it.
@@ -258,5 +258,5 @@ Language choice for the dispatcher. Your stars lean towards Effect (effect-smol,
 - [ ] Dispatcher language: TypeScript with Effect for the CLI, or Go everywhere?
 - [ ] Which agent accounts go through CLIProxyAPI, given the terms caveat?
 - [ ] Where do backups of the Beszel data directory and CLIProxyAPI's OAuth token files go? R2 is already planned for etcd.
-- [ ] Do agents run as root, or as an unprivileged `agent` user with their own `tag:agent` tailnet node? This decides how much the per-device identity limit matters.
+- [x] Do agents get restricted access? No; they get full access, the same as you (see Open inside the tailnet).
 - [ ] Does CLIProxyAPI emit OpenTelemetry or usage events itself, or does CPA Usage Keeper have to supply them?
