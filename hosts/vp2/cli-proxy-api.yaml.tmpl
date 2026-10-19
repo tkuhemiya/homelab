@@ -1,0 +1,35 @@
+{{- /* CLIProxyAPI config, rendered on vp2 by `doppler secrets substitute`.
+       An upstream block only appears once its key exists in Doppler prd. */ -}}
+config-version: 8
+server:
+  host: "100.86.79.18"   # vp2's tailnet IP: never listen on the public interface
+  port: 8317
+management:
+  allow-remote: false
+  secret-key: ""           # empty = management API off
+  disable-control-panel: true
+access:
+  api-keys: []             # open inside the tailnet: clients need no key
+oauth:
+  auth-dir: "/var/lib/cliproxyapi/auths"
+{{- if or .GROQ_API_KEY .GEMINI_API_KEY }}
+api-keys:
+{{- if .GEMINI_API_KEY }}
+  gemini:
+    - name: gemini
+      keys:
+        - api-key: "{{ .GEMINI_API_KEY }}"
+{{- end }}
+{{- if .GROQ_API_KEY }}
+  openai-compatibility:
+    - name: groq
+      base-url: "https://api.groq.com/openai/v1"
+      keys:
+        - api-key: "{{ .GROQ_API_KEY }}"
+      models:
+        - name: "openai/gpt-oss-120b"
+          alias: "gpt-oss-120b"
+        - name: "openai/gpt-oss-20b"
+          alias: "gpt-oss-20b"
+{{- end }}
+{{- end }}

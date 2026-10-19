@@ -6,3 +6,4 @@ cd "$(dirname "$0")"
 ../common/bootstrap.sh
 ../common/earlyoom.sh
 ../common/vector.sh
+./cli-proxy-api.sh

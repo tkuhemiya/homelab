@@ -1,0 +1,21 @@
+[Unit]
+Description=CLIProxyAPI LLM gateway (tailnet only)
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Service]
+User=cliproxy
+Group=cliproxy
+WorkingDirectory=/var/lib/cliproxyapi
+ExecStart=/usr/local/bin/cli-proxy-api -config /etc/cliproxyapi/config.yaml
+# Binds to the tailnet IP, which may not exist yet at boot: keep retrying.
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/cliproxyapi
+
+[Install]
+WantedBy=multi-user.target
