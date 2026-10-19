@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ../common/bootstrap.sh
+../common/vps-trim.sh
 ../common/earlyoom.sh
 ../common/vector.sh
 ./cli-proxy-api.sh

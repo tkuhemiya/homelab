@@ -7,7 +7,7 @@ After=network-online.target tailscaled.service
 User=cliproxy
 Group=cliproxy
 WorkingDirectory=/var/lib/cliproxyapi
-ExecStart=/usr/local/bin/cli-proxy-api -config /etc/cliproxyapi/config.yaml
+ExecStart=/usr/local/bin/cli-proxy-api -config /var/lib/cliproxyapi/config.yaml
 # Binds to the tailnet IP, which may not exist yet at boot: keep retrying.
 Restart=always
 RestartSec=5

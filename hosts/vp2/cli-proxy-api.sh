@@ -21,13 +21,15 @@ fi
 
 id cliproxy >/dev/null 2>&1 ||
   useradd --system --home-dir /var/lib/cliproxyapi --create-home --shell /usr/sbin/nologin cliproxy
-install -d -o root -g cliproxy -m 0750 /etc/cliproxyapi
+install -d -o cliproxy -g cliproxy -m 0750 /var/lib/cliproxyapi
 install -d -o cliproxy -g cliproxy -m 0700 /var/lib/cliproxyapi/auths
 
-# Config holds upstream keys: readable by root and the service only.
+# The config lives in the service's own writable dir, not /etc: on startup the
+# server rewrites it (hashing the management key), the web UI saves edits to it,
+# and it downloads the UI into static/ next to it.
 # (install can't read from a pipe, so render to a private temp file first.)
 doppler secrets substitute cli-proxy-api.yaml.tmpl > "$tmp/config.yaml"
-install -o root -g cliproxy -m 0640 "$tmp/config.yaml" /etc/cliproxyapi/config.yaml
+install -o cliproxy -g cliproxy -m 0600 "$tmp/config.yaml" /var/lib/cliproxyapi/config.yaml
 
 install -m 0644 cli-proxy-api.service /etc/systemd/system/cli-proxy-api.service
 systemctl daemon-reload
