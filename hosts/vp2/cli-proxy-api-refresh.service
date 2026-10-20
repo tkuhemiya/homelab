@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh CLIProxyAPI's model lists from its providers
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# doppler finds its token under $HOME, which systemd leaves unset for root services.
+Environment=HOME=/root
+ExecStart=/root/homelab/hosts/vp2/cli-proxy-api-render.sh

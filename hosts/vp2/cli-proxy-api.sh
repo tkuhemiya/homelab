@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # CLIProxyAPI: the tailnet's LLM gateway, http://vp2:8317.
-# Upstream keys come from Doppler prd; re-run after adding one. Run as root; safe to re-run.
+# Providers: cli-proxy-api-providers.json + keys in Doppler prd; models are fetched
+# live and refreshed daily by a timer. Run as root; safe to re-run.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION=8.0.35
-tmp=$(mktemp -d)   # 0700: safe for the rendered config too
+tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 installed=$(cli-proxy-api --help 2>&1 | sed -n 's/^CLIProxyAPI Version: \([^,]*\),.*/\1/p' || true)
@@ -24,14 +25,13 @@ id cliproxy >/dev/null 2>&1 ||
 install -d -o cliproxy -g cliproxy -m 0750 /var/lib/cliproxyapi
 install -d -o cliproxy -g cliproxy -m 0700 /var/lib/cliproxyapi/auths
 
+install -m 0644 cli-proxy-api.service cli-proxy-api-refresh.service cli-proxy-api-refresh.timer \
+  /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable cli-proxy-api cli-proxy-api-refresh.timer
+systemctl start cli-proxy-api-refresh.timer
+
 # The config lives in the service's own writable dir, not /etc: on startup the
 # server rewrites it (hashing the management key), the web UI saves edits to it,
 # and it downloads the UI into static/ next to it.
-# (install can't read from a pipe, so render to a private temp file first.)
-doppler secrets substitute cli-proxy-api.yaml.tmpl > "$tmp/config.yaml"
-install -o cliproxy -g cliproxy -m 0600 "$tmp/config.yaml" /var/lib/cliproxyapi/config.yaml
-
-install -m 0644 cli-proxy-api.service /etc/systemd/system/cli-proxy-api.service
-systemctl daemon-reload
-systemctl enable cli-proxy-api
-systemctl restart cli-proxy-api
+./cli-proxy-api-render.sh --restart
