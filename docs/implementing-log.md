@@ -362,7 +362,8 @@ I chose the first, because it keeps git plus Doppler as the source of truth:
   the Doppler secret holding its key, and optional `include`/`exclude` regexes
   (OpenRouter: only `:free` models, minus safety classifiers; Groq: no Whisper,
   guard or Orpheus models).
-- `cli-proxy-api-upstreams.py`: for each provider whose key exists, asks its
+- `upstreams/` (first written in Python, then rewritten in Go with only the standard
+  library; the bootstrap compiles it on vp2): for each provider whose key exists, asks its
   `/models` endpoint, filters the list, and writes the `api-keys:` section. Aliases
   are generated: `nvidia/nemotron-3-super-120b-a12b:free` becomes
   `nemotron-3-super-120b-a12b`.
@@ -377,6 +378,12 @@ bootstrap script.
 
 **Problem: Groq returned 403 to the script but not to curl.** Groq's edge blocks
 Python's default `Python-urllib` user agent. Fix: send a custom `User-Agent`.
+
+**Decision: rewrite the generator in Go.** I prefer Go for the lab's own tools, and the
+BurstJob operator will be Go anyway. It uses only the standard library and is
+compiled on vp2 by the bootstrap (`apt install golang-go`, `go build`). Before the
+Python version was removed, both versions were run against the live providers and
+produced byte-identical output, so the switch was verified, not assumed.
 
 **Lesson: a 403 that only happens from code is often the user agent.** Compare the
 request headers with a working curl before suspecting the key.

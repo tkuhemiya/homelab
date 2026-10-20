@@ -20,6 +20,10 @@ if [ "$installed" != "$VERSION" ]; then
   install -m 0755 "$tmp/cli-proxy-api" /usr/local/bin/cli-proxy-api
 fi
 
+# The provider/model generator (upstreams/, Go stdlib only) is built here from source.
+command -v go >/dev/null || apt-get install -y golang-go
+(cd upstreams && go build -trimpath -o /usr/local/bin/cli-proxy-api-upstreams .)
+
 id cliproxy >/dev/null 2>&1 ||
   useradd --system --home-dir /var/lib/cliproxyapi --create-home --shell /usr/sbin/nologin cliproxy
 install -d -o cliproxy -g cliproxy -m 0750 /var/lib/cliproxyapi
