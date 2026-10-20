@@ -455,6 +455,27 @@ Tested like the others: the manual install was removed (binary, user, config), t
 the bootstrap ran on the clean server (96 s with Go's build cache warm), then again
 (30 s). The UI answers on the tailnet and not on vp1's public IP.
 
+**Why coop went down.** coop's journal for that boot simply stops at 06:30 local time
+(01:00 UTC), in the middle of routine background tasks. There's no shutdown
+sequence, no kernel error, no memory pressure (92% of RAM free, swap unused) and
+the load was near zero. A system that shuts itself down logs it, so it didn't:
+the power was cut or the machine was stopped from outside. `systemd-detect-virt`
+shows coop is a **KVM virtual machine**, so the cause is at the layer below it,
+either the host stopping the VM or the host losing power. Nothing inside coop
+can say which.
+
+**Lesson:** a journal that just stops, with no shutdown lines, means "killed from
+outside", not "crashed".
+
+The alert loop worked end to end: coop was down at 06:30, the ntfy alert went out
+at 07:08 (three failed checks after Gatus first started), and the "resolved"
+notification came at 07:30 when coop was switched back on.
+
+**Healthchecks.io.** I created a check (5-minute period, 10-minute grace) and put its
+ping URL in Doppler as `HEALTHCHECKS_PING_URL`. Re-running the vp1 bootstrap added the
+`healthchecks-ping` check to Gatus, and the first ping succeeded. If vp1 or Gatus dies,
+the pings stop and Healthchecks emails me. That's the "who watches the watcher" piece.
+
 ### Trimming the VPS images
 
 Both VPSes had `rpcbind` listening on port 111 on every interface, pulled in by
@@ -465,11 +486,10 @@ removal is scripted in `hosts/common/vps-trim.sh`.
 
 ## Still open
 
-- Healthchecks.io account and `HEALTHCHECKS_PING_URL` in Doppler, so Gatus itself is
-  watched.
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
   annoying, build it in GitHub Actions instead.
-- Find out why coop went offline on 2026-10-20.
+- coop runs as a KVM virtual machine: find out what stopped it on 2026-10-20 (host power
+  loss or the host stopping the VM), and set the VM to start automatically when the host boots.
 - Agents on every node, then Tailnet Lock (step 9).
 - bird: run its bootstrap (Doppler token, Vector) next time it's on.
 - On coop, earlyoom vs Kubernetes memory handling (Phase 2).
