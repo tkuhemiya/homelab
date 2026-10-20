@@ -7,3 +7,4 @@ cd "$(dirname "$0")"
 ../common/vps-trim.sh
 ../common/earlyoom.sh
 ../common/vector.sh
+./gatus.sh

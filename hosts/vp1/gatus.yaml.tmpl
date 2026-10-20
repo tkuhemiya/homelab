@@ -1,0 +1,83 @@
+{{- /* Gatus config, rendered on vp1 by `doppler secrets substitute`.
+       UI: http://vp1:8080 (tailnet only). Alerts go to the ntfy topic in NTFY_TOPIC. */ -}}
+web:
+  address: 100.80.77.88   # vp1's tailnet IP: never listen on the public interface
+  port: 8080
+storage:
+  type: sqlite
+  path: /var/lib/gatus/data.db
+alerting:
+  ntfy:
+    url: https://ntfy.sh
+    topic: "{{ .NTFY_TOPIC }}"
+    priority: 4
+    default-alert:
+      failure-threshold: 3   # 3 failed checks in a row before alerting
+      success-threshold: 2
+      send-on-resolved: true
+
+endpoints:
+  # LLM gateway on vp2: is it up, and does it know any models?
+  - name: cli-proxy-api
+    group: vp2
+    url: http://vp2:8317/v1/models
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "len([BODY].data) > 0"
+    alerts:
+      - type: ntfy
+
+  # A real model call through the gateway. Every 30 minutes, to spare free quota.
+  - name: llm-roundtrip
+    group: vp2
+    url: http://vp2:8317/v1/chat/completions
+    method: POST
+    interval: 30m
+    headers:
+      Content-Type: application/json
+    body: '{"model":"gpt-oss-20b","messages":[{"role":"user","content":"Reply with exactly: ok"}],"max_tokens":50}'
+    conditions:
+      - "[STATUS] == 200"
+      - "len([BODY].choices) > 0"
+    alerts:
+      - type: ntfy
+        failure-threshold: 2
+
+  # Machines: is SSH reachable over the tailnet?
+  - name: ssh
+    group: coop
+    url: tcp://coop:22
+    interval: 1m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: ntfy
+
+  - name: ssh
+    group: vp2
+    url: tcp://vp2:22
+    interval: 1m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: ntfy
+
+  # bird is switched off most days: tracked, never alerted on.
+  - name: ssh
+    group: bird
+    url: tcp://bird:22
+    interval: 5m
+    conditions:
+      - "[CONNECTED] == true"
+{{- if .HEALTHCHECKS_PING_URL }}
+
+  # Dead man's switch: Healthchecks.io alerts if these pings stop, i.e. if Gatus
+  # or vp1 is down.
+  - name: healthchecks-ping
+    group: vp1
+    url: "{{ .HEALTHCHECKS_PING_URL }}"
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+{{- end }}

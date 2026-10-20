@@ -1,0 +1,22 @@
+[Unit]
+Description=Gatus uptime monitoring (tailnet only)
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Service]
+User=gatus
+Group=gatus
+WorkingDirectory=/var/lib/gatus
+Environment=GATUS_CONFIG_PATH=/etc/gatus/config.yaml
+ExecStart=/usr/local/bin/gatus
+# Binds to the tailnet IP, which may not exist yet at boot: keep retrying.
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/gatus
+
+[Install]
+WantedBy=multi-user.target
