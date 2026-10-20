@@ -401,6 +401,60 @@ Result: 20 models, 4 from Groq and 16 free from OpenRouter, and both providers
 answered a test request through the gateway. The aliases changed in the process
 (`nemotron-3-super` is now `nemotron-3-super-120b-a12b`).
 
+### Uptime monitoring: Gatus on vp1
+
+Gatus checks the lab's services every minute and sends alerts. It runs on vp1 so it
+stays up when the home internet goes down. Its UI is at `http://vp1:8080`, tailnet
+only.
+
+**Decision: alerts go to ntfy.** That means push notifications to the ntfy phone app
+through a topic on the public ntfy.sh server. No account is needed. The topic name
+is random and works as the password, stored in Doppler as `NTFY_TOPIC`. Telegram,
+Discord and email were the alternatives; ntfy needs one secret and no signup.
+
+**Problem: Gatus has no Linux binaries,** only a Docker image, and Docker had just been
+removed from vp1. Decision: build it from source with Go (`go install
+github.com/TwiN/gatus/v5@v5.37.0`), the same approach as the model-list generator.
+
+**Problem: the first build ran 20+ minutes and then failed with `no space left on
+device`,** with 31 GB free on disk. The cause: **on Ubuntu 26.04, `/tmp` is a 476 MB
+RAM-backed filesystem (tmpfs)**, and Go writes its temporary build files there,
+including the linker's output for a 50 MB program. Fix: `GOTMPDIR=/var/tmp/go-build`,
+on disk. Because Go caches compiled packages, the retry finished in 49 seconds.
+
+Other things learned from the build:
+
+- Gatus pulls in a lot (AWS SDK, Google APIs, OpenTelemetry, a pure-Go SQLite). On a
+  1 GB, 2-core VPS, a cold build is slow and peaked at about 1.3 GB of swap.
+  `GOFLAGS=-p=1` (one package at a time) keeps memory use bounded; earlyoom never
+  had to act.
+- **`go version -m <binary>` prints the module version a Go binary was built from.**
+  The script uses it to skip the build when the right version is already installed.
+- A debugging mistake: `pkill -f "while sleep 2"` killed my own command, because the
+  command's own text contained that pattern.
+
+What it checks:
+
+| Check | How | Alerts |
+|---|---|---|
+| LLM gateway up | `GET http://vp2:8317/v1/models`, 200 and at least one model | yes, after 3 failures |
+| A real model answers | `POST` a chat completion to `gpt-oss-20b` every 30 min (spares free quota) | yes, after 2 failures |
+| coop, vp2 reachable | TCP connect to port 22 over the tailnet | yes |
+| bird reachable | same, every 5 min | no, since bird is off most days |
+| Healthchecks.io ping | added once `HEALTHCHECKS_PING_URL` exists in Doppler | (Healthchecks alerts if pings stop) |
+
+Gatus listens on vp1's tailnet IP only, using the same restart-until-Tailscale-is-up
+service setup as CLIProxyAPI. It uses about 30 MB of RAM. The config is a Go template
+rendered from Doppler, and the Healthchecks section only appears once its URL exists.
+
+**First real catch.** On its first run, Gatus reported coop unreachable. It wasn't a
+bug: `tailscale status` showed coop offline for 33 minutes, and coop didn't answer
+from the Mac either. The monitoring caught an outage within minutes of going live.
+
+Tested like the others: the manual install was removed (binary, user, config), then
+the bootstrap ran on the clean server (96 s with Go's build cache warm), then again
+(30 s). The UI answers on the tailnet and not on vp1's public IP.
+
 ### Trimming the VPS images
 
 Both VPSes had `rpcbind` listening on port 111 on every interface, pulled in by
@@ -411,8 +465,11 @@ removal is scripted in `hosts/common/vps-trim.sh`.
 
 ## Still open
 
-- Gatus on vp1 with a Healthchecks.io ping (step 8): its first checks are "is the
-  gateway up" and "does a real model answer".
+- Healthchecks.io account and `HEALTHCHECKS_PING_URL` in Doppler, so Gatus itself is
+  watched.
+- Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
+  annoying, build it in GitHub Actions instead.
+- Find out why coop went offline on 2026-10-20.
 - Agents on every node, then Tailnet Lock (step 9).
 - bird: run its bootstrap (Doppler token, Vector) next time it's on.
 - On coop, earlyoom vs Kubernetes memory handling (Phase 2).

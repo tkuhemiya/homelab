@@ -187,7 +187,7 @@ Collectors stay tiny, and data leaves the lab, so you can still see what broke a
 
 | Need | Tool | Where it runs | Sink |
 | --- | --- | --- | --- |
-| Uptime of tailnet services | Gatus (single binary) | vp1 | Its own page plus alerts |
+| Uptime of tailnet services | Gatus, built from source (`hosts/vp1/gatus.sh`) | vp1, UI at `http://vp1:8080` | Its own page plus ntfy push alerts |
 | Is the watcher alive | Healthchecks.io dead-man check pinged by Gatus | Free SaaS | Email or push |
 | Host metrics | Beszel agent + hub | Agents on all nodes, hub on vp1 | Beszel hub |
 | Logs | Vector or fluent-bit | All nodes; a DaemonSet in k0s | Axiom (500 GB/month ingest) |
