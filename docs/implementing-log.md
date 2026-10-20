@@ -346,6 +346,54 @@ nemotron-3-super (OpenRouter):  hello from the lab
 own the config. The panel is for viewing usage and for subscription logins, which are
 stored as files in `auths/` that the script never touches.
 
+**Decision: fetch model lists automatically instead of maintaining them by hand.**
+Having to list every model by hand surprised me, so I checked CLIProxyAPI's source.
+The server builds the model list for OpenAI-compatible providers only from its
+config. The web panel has a model-discovery button, but it's a one-time pick saved
+into the config, which the bootstrap script then overwrites. The explicit list exists
+because it doubles as a routing table (short aliases, several upstream models pooled
+under one name) and because some providers have hundreds of models.
+
+Three options were considered: the script fetches the models; the panel owns the
+providers (no git or Doppler, so lost if vp2 is rebuilt); or keep editing by hand.
+I chose the first, because it keeps git plus Doppler as the source of truth:
+
+- `cli-proxy-api-providers.json`: one entry per provider, with its type, base URL,
+  the Doppler secret holding its key, and optional `include`/`exclude` regexes
+  (OpenRouter: only `:free` models, minus safety classifiers; Groq: no Whisper,
+  guard or Orpheus models).
+- `cli-proxy-api-upstreams.py`: for each provider whose key exists, asks its
+  `/models` endpoint, filters the list, and writes the `api-keys:` section. Aliases
+  are generated: `nvidia/nemotron-3-super-120b-a12b:free` becomes
+  `nemotron-3-super-120b-a12b`.
+- `cli-proxy-api-render.sh`: base template plus generated providers. It restarts the
+  service only if the result changed, comparing against a root-only copy of the last
+  render, because the live file has the management key hashed into it.
+- A daily systemd timer (`cli-proxy-api-refresh`) re-runs the render, so models that
+  disappear upstream drop out by themselves.
+
+Adding a provider is now: one entry in the JSON, its key in Doppler, re-run the
+bootstrap script.
+
+**Problem: Groq returned 403 to the script but not to curl.** Groq's edge blocks
+Python's default `Python-urllib` user agent. Fix: send a custom `User-Agent`.
+
+**Lesson: a 403 that only happens from code is often the user agent.** Compare the
+request headers with a working curl before suspecting the key.
+
+**Problem (avoided): systemd leaves `$HOME` unset for root services,** and the Doppler
+CLI looks for its token under `$HOME`. The timer's service sets `Environment=HOME=/root`.
+
+**Decision: if a fetch fails, keep the old config.** If a provider or Doppler can't be
+reached, the generator exits with an error before anything is installed, so a network
+blip never replaces a working config with an empty one. Both cases were tested by
+pointing the script at a dead proxy (`HTTPS_PROXY=http://127.0.0.1:9`): the config
+stayed byte-identical and the service kept running.
+
+Result: 20 models, 4 from Groq and 16 free from OpenRouter, and both providers
+answered a test request through the gateway. The aliases changed in the process
+(`nemotron-3-super` is now `nemotron-3-super-120b-a12b`).
+
 ### Trimming the VPS images
 
 Both VPSes had `rpcbind` listening on port 111 on every interface, pulled in by
@@ -362,5 +410,3 @@ removal is scripted in `hosts/common/vps-trim.sh`.
 - bird: run its bootstrap (Doppler token, Vector) next time it's on.
 - On coop, earlyoom vs Kubernetes memory handling (Phase 2).
 - Pod logs: Vector DaemonSet (Phase 2).
-- The OpenRouter free model list changes often, and the template's model list has to be
-  updated by hand.

@@ -102,7 +102,8 @@ CLIProxyAPI runs as a systemd service on vp2 as the single LLM endpoint for the 
 - **Free tiers:** Groq, Gemini API keys and OpenRouter `:free` models are added as OpenAI-compatible upstreams in its config.
 - **Usage tracking:** the core no longer ships usage stats. Add a companion such as CPA Usage Keeper if you want per-account dashboards.
 - **Consumers:** agents, the burst dispatcher and anything in k0s, at `http://vp2:8317`. It listens on vp2's tailnet IP only and needs no client key, in line with open access inside the tailnet.
-- **Setup:** `hosts/vp2/cli-proxy-api.sh` installs a pinned release and renders `cli-proxy-api.yaml.tmpl` from Doppler. Each upstream block (Groq, Gemini) appears only once its key (`GROQ_API_KEY`, `GEMINI_API_KEY`) exists in Doppler `prd`.
+- **Setup:** `hosts/vp2/cli-proxy-api.sh` installs a pinned release. Providers are listed in `cli-proxy-api-providers.json`, each with its Doppler key name and a model filter. A provider is turned on when its key exists in Doppler `prd`, and its models are fetched from the provider's `/models` endpoint at install time and again by a daily timer.
+- **Web UI:** `http://vp2:8317/management.html`, for usage and subscription logins. Config edits made there are overwritten by the next render.
 - **Caveat:** routing consumer subscriptions through a proxy can conflict with some providers' terms. Treat those accounts as at risk and keep the free API-key tiers as fallback.
 
 ### LLM observability
