@@ -17,4 +17,4 @@ if ! command -v doppler >/dev/null; then
 fi
 
 # Tailscale SSH: tailnet identity is the login, no keys to copy between hosts.
-tailscale set --ssh
+tailscale set --ssh --accept-risk=lose-ssh   # turning it on cuts an SSH session over the tailnet
