@@ -15,3 +15,6 @@ if ! command -v doppler >/dev/null; then
   apt-get update
   apt-get install -y doppler
 fi
+
+# Tailscale SSH: tailnet identity is the login, no keys to copy between hosts.
+tailscale set --ssh
