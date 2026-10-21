@@ -597,6 +597,32 @@ itself, from adding devices to the tailnet. But every new device, including the 
 Kubernetes operator will create, would need signing by a trusted device. I'd rather not
 add that complexity; MFA on the login is enough for this lab. That closes Phase 1.
 
+### Checking Phase 1 against its own test
+
+Phase 1's "done when" is: every node ships logs off-lab, and an agent on any node can
+reach every other node. I'd called it done without running the second half. When I ran
+it, two of six SSH paths failed:
+
+- **coop → bird: `Permission denied (publickey)`.** Tailscale SSH had been switched on by
+  hand on coop, vp1 and vp2, but never on bird, and no script did it. So the connection
+  fell through to plain OpenSSH, which wants a key. Fix: `tailscale set --ssh` is now in
+  `hosts/common/bootstrap.sh`.
+  - **Tailscale refuses to do this from inside an SSH session over the tailnet,** because
+    it reroutes port 22 and cuts that session. `--accept-risk=lose-ssh` allows it; I ran
+    bird's bootstrap detached with `systemd-run` so the cut didn't kill the script.
+- **bird → vp1/vp2: `Connection closed`.** bird logged in as `themiya`, which doesn't exist
+  on the VPSes. coop only worked because of a hand-written `~/.ssh/config`. That's now in
+  `agents-user.sh`.
+
+**Running detached found a real bug.** `systemd-run` starts with no `$HOME`, so Doppler
+failed. But `vector.sh` wrote `AXIOM_TOKEN=` (empty) anyway and Vector stopped starting.
+Under `set -e`, **a failing command inside `echo "$(...)"` doesn't stop the script**:
+only the `echo`'s exit status counts. Fix: fetch the token into a variable first, where
+a failure does stop the script.
+
+**Lesson:** "done" means the test in the roadmap passed, not that every step ran. All six
+paths now work, and all four bootstraps re-run with exit 0.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
