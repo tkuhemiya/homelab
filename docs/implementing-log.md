@@ -563,6 +563,17 @@ hostname it read at startup until `tailscaled` restarts; I restarted it with a
 `systemd-run` timer so my own SSH session over Tailscale wasn't cut off mid-command.
 bird's bootstrap now sets the name.
 
+**Pairing permissions.** T3 gives each paired device a set of permissions (scopes):
+viewing threads, running tasks, managing providers, reading files and so on. The Mac's
+route to coop had only four of them (`orchestration:read/operate`, `terminal:operate`,
+`relay:read`), so "Update all" failed with `missing required scope: providers:manage`.
+Pairings from newer versions get every scope by default (bird's did). Fix: update coop's
+server from the command line (`t3 update --yes`), then pair the Mac again with a fresh
+`t3 pair --tailscale` link. Pairing the same machine again replaces its old grant.
+I want every device to have full access, the same stance as the tailnet policy.
+
+Skipping Codex logins for now: no Codex subscription. It stays installed, unused.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
