@@ -159,7 +159,7 @@ Inside the tailnet, the caller's Tailscale identity is the credential, so most s
 | Your own services (burst MCP server, dispatcher API) | `tailscale serve` identity headers plus app capabilities in grants (for example `can_submit_gpu`) | API tokens |
 | Web UIs (Beszel, Grafana) | tsidp as the OIDC provider | Per-app passwords |
 
-Turn on Tailnet Lock and MFA on the identity provider, since the tailnet is now the root of trust.
+Turn on MFA on the identity provider, since the tailnet is now the root of trust. Tailnet Lock is deliberately left off: it would protect against a compromised Tailscale account or control plane, but every new device (including ones the Kubernetes operator creates) would need signing, and that extra machinery isn't worth it for this lab.
 
 ### 2. LLM keys: CLIProxyAPI on vp2
 
@@ -222,7 +222,7 @@ Flow: you or an agent push to `main`. Flux reconciles `flux/` into k0s, `k0sctl 
 
 Five phases, each finished when its "done when" holds. Phases 3 and 4 can run in parallel.
 
-1. **Foundation.** Create the homelab repo and the Doppler project with a single `prd` config and one service token per host. Write the tailnet policy (open between your devices, Tailscale SSH without browser re-auth) and turn on Tailnet Lock. Set up earlyoom on the small nodes, and log shipping to Axiom. Put agents on every node, CLIProxyAPI on vp2, and Gatus with its Healthchecks.io ping on vp1, all installed by their bootstrap scripts.
+1. **Foundation.** Create the homelab repo and the Doppler project with a single `prd` config and one service token per host. Write the tailnet policy (open between your devices, Tailscale SSH without browser re-auth). Set up earlyoom on the small nodes, and log shipping to Axiom. Put agents on coop and bird, CLIProxyAPI on vp2, and Gatus with its Healthchecks.io ping on vp1, all installed by their bootstrap scripts.
    - **Done when:** every node ships logs off-lab, and an agent on any node can reach every other node.
 2. **k0s on defaults.** Bring up coop as controller plus worker, and bird as a worker, through k0sctl. vp1 and vp2 stay outside the cluster. Install Flux and the Tailscale operator.
    - **Done when:** a test app is reachable on the tailnet only, and Gatus on vp1 alerts when you stop it.

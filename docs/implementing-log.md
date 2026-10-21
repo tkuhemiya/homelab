@@ -574,14 +574,34 @@ I want every device to have full access, the same stance as the tailnet policy.
 
 Skipping Codex logins for now: no Codex subscription. It stays installed, unused.
 
+### bird's bootstrap
+
+bird got its Doppler token and its full bootstrap (Doppler, Vector, agents, hostname).
+Two problems, both from a half-finished first attempt:
+
+- **My mistake:** I passed the token with `umask 077` set in the same command, and the
+  bootstrap started from that command inherited it. So the Doppler apt key
+  (`/usr/share/keyrings/doppler-archive-keyring.gpg`) was written readable only by root,
+  and apt, which checks signatures as the unprivileged `_apt` user, rejected the repository
+  as "not signed". **A umask set in a shell leaks into everything started from it,
+  including sudo.** Fix: the script now runs `chmod 0644` on the key itself.
+- **The failed run left the Doppler apt source behind** without a usable key, so the
+  script's first `apt-get update` failed on every retry. Fix: the script removes that
+  file before it starts. A script that's "safe to re-run" also has to survive its own
+  half-finished runs.
+
+Vector on bird passed its Axiom health check, and a second bootstrap run changed nothing.
+
+**Decision: no Tailnet Lock.** It would stop a compromised Tailscale account, or Tailscale
+itself, from adding devices to the tailnet. But every new device, including the ones the
+Kubernetes operator will create, would need signing by a trusted device. I'd rather not
+add that complexity; MFA on the login is enough for this lab. That closes Phase 1.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
   annoying, build it in GitHub Actions instead.
 - coop runs as a KVM virtual machine: find out what stopped it on 2026-10-20 (host power
   loss or the host stopping the VM), and set the VM to start automatically when the host boots.
-- Tailnet Lock (step 9).
-- bird: set its Doppler token and run the full bootstrap (Vector).
-- coop runs an older T3 Code (0.0.46) than bird (0.1.1): align them with T3's update button.
 - On coop, earlyoom vs Kubernetes memory handling (Phase 2).
 - Pod logs: Vector DaemonSet (Phase 2).
