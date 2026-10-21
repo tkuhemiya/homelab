@@ -3,6 +3,7 @@
 set -euo pipefail
 
 if ! command -v doppler >/dev/null; then
+  rm -f /etc/apt/sources.list.d/doppler-cli.list   # a half-finished earlier run breaks apt-get update
   apt-get update
   apt-get install -y ca-certificates curl gnupg
   curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
