@@ -19,10 +19,10 @@ coop holds the control plane and the heavy lifting, bird is a worker that can dr
 
 | Node | CPU / RAM | k0s role | Also runs (outside k0s) |
 | --- | --- | --- | --- |
-| coop | 6 cores / 8 GB | Controller + worker (`--enable-worker`) | Claude Code, T3 Code, k0sctl, Dozzle |
-| bird | 4 cores / 8 GB | Worker that may drop out | Claude Code, T3 Code |
+| coop | 6 cores / 8 GB | Controller + worker (`--enable-worker`) | Agents, T3 Code, k0sctl, Dozzle |
+| bird | 4 cores / 8 GB | Worker that may drop out | Agents, T3 Code |
 | vp1 | 2 cores / 1 GB | Not in k0s | Gatus, Beszel hub, earlyoom |
-| vp2 | 2 cores / 1 GB | Not in k0s | CLIProxyAPI, earlyoom; agents only if RAM allows |
+| vp2 | 2 cores / 1 GB | Not in k0s | CLIProxyAPI, earlyoom |
 
 The cluster is just coop and bird. vp1 and vp2 stay plain systemd hosts with too little RAM to share with a kubelet; the cluster consumes their services (CLIProxyAPI, Gatus) as external services through selectorless Services and EndpointSlices. No free cloud VMs join the cluster.
 
@@ -41,7 +41,6 @@ These run as plain systemd services outside k0s. Each VPS has a `hosts/<node>/bo
 | vp1, vp2 | Tailscale | Joined once by hand with an auth key | No | Not in any script; the auth key is single-use |
 | vp2 | CLIProxyAPI | YAML file (upstreams, API keys, accounts) | Yes, as a template; keys in Doppler | OAuth token files written at login are state and stay off git |
 | vp1 | Healthchecks.io | Web UI (SaaS, no host) | No | Gatus pings it using the URL in its config |
-| vp1, vp2 | Agents (Claude Code, Codex, OpenCode) | Their own settings directories | No by default | Revisit if you want their settings versioned |
 
 In short: Beszel and Healthchecks can be set up once in their web UIs. Gatus and CLIProxyAPI need their YAML files in git, since those files hold the alert rules and routing. Those files are committed as templates, and each bootstrap script fills in the secrets from Doppler using that VPS's read-only Doppler token (see Secrets and identity).
 
@@ -137,12 +136,13 @@ One interface sends a job to whichever free provider has headroom. It starts as 
 
 ## Agents
 
-Claude Code, T3 Code, Codex and OpenCode are installed directly on bird, coop, vp1 and vp2, outside k0s and Nomad, with full access. They are both the workers and the management interface for the lab.
+Claude Code, Codex and the Cursor CLI are installed directly on coop and bird, outside k0s, with full access, and T3 Code drives them. They are both the workers and the management interface for the lab. vp1 and vp2 get no agents: with about 500 MB free, an agent would compete with Gatus and CLIProxyAPI.
 
 - **Why outside the cluster:** an agent can fix the cluster when the cluster is broken.
 - **Access:** each agent host reaches the Kubernetes API through the Tailscale API server proxy with full admin access, and gets k0sctl, the burst CLI and its MCP server, `gh`, the CLIProxyAPI endpoint and the host's Doppler token.
 - **Sessions:** use persistent sessions (zmx, tmux or mosh) so long runs survive disconnects. Use Tailscale SSH to get in from anywhere.
-- **Memory on vp1 and vp2:** a Node-based agent can take a few hundred MB, which competes with Gatus, Beszel and CLIProxyAPI. Run agents there only for light tasks, and keep earlyoom installed so the OOM killer picks the right victim.
+- **Setup:** `hosts/common/agents.sh` installs each agent with its vendor's installer for the main user, plus the T3 Code CLI (nightly channel, matching the desktop app) as a systemd user service with lingering. Each tool updates itself; the script only installs what's missing. Logging in to each agent is a one-time manual step.
+- **T3 Code across machines:** each server listens on `127.0.0.1:3773` and Tailscale Serve publishes it as `https://coop.tailff3296.ts.net` and `https://bird.tailff3296.ts.net`, tailnet only with a real certificate. Servers don't connect to each other; each client (the Mac's desktop app, the phone app, app.t3.codes) pairs once with each server and then sees all of them, and can load-balance new threads across them. No T3 Connect account is needed, since the tailnet already provides the reachability.
 - **Optional isolation later:** for throwaway tasks, smolvm, gondolin or Cloudflare's sandbox SDK can give an agent a disposable sandbox without a hypervisor layer on the host.
 - **Workflow:** agents change infrastructure by pushing to homelab and Flux applies it. This is history, not a safety rail. You can roll back any change.
 

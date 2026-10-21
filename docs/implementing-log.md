@@ -501,13 +501,67 @@ removal is scripted in `hosts/common/vps-trim.sh`.
 
 ---
 
+### Agents and T3 Code on coop and bird
+
+**Decision: agents only on coop and bird.** vp1 and vp2 have about 500 MB free, and a
+Node-based agent takes a few hundred MB, so they'd compete with Gatus and the gateway.
+The agents are Claude Code, Codex and the Cursor CLI (`agent`), all from their vendors'
+own installers into `~/.local/bin`. None of them need Node any more.
+
+What was already there: Claude Code on both, logged in. coop already ran a T3 Code
+server as a systemd user service, put there by the Mac's desktop app over SSH. bird
+had an old T3 build from source (from July), which I moved aside and replaced with the
+official nightly.
+
+**Researching how to run T3 Code on a server.** There are three ways to reach a remote
+T3 Code:
+
+1. **Desktop-managed SSH:** the Mac app connects over SSH, starts a server there and
+   forwards the port. No setup at all, but only that one desktop app can use it; the
+   phone and the web app can't.
+2. **T3 Connect:** T3's hosted relay, signed in with a T3 account. It works through NAT
+   without port forwarding, but that's a problem the tailnet already solves, and it
+   adds an outside account in the path.
+3. **Direct pairing over the tailnet:** run the server as a background service and pair
+   each device once with a one-time link.
+
+**Decision: option 3, with Tailscale Serve for HTTPS.** Each server stays on
+`127.0.0.1:3773`, and `tailscale serve --bg --https=443 http://127.0.0.1:3773`
+publishes it as `https://bird.tailff3296.ts.net`, with a real Let's Encrypt certificate
+from Tailscale and reachable only inside the tailnet. HTTPS matters because the hosted
+web app (app.t3.codes) only connects to HTTPS servers. Pairing is a one-time link per
+device that you paste into **Settings → Connections → Add environment**; for coop this
+adds a second route to the machine the Mac already knows over SSH.
+
+"Connecting the instances to each other" turned out not to be a thing: T3 servers don't
+talk to each other. The client does: one app pairs with every server, shows them all
+side by side, and can spread new threads across them (Load balancing in Settings).
+
+How it runs:
+
+- `t3 service install` writes a **systemd user service** (`~/.config/systemd/user/t3code.service`).
+  User services normally stop when you log out, so the script turns on **lingering**
+  (`loginctl enable-linger`), which keeps the user's systemd running from boot.
+- Running the user half from a root script: `runuser` plus a hand-built environment,
+  in particular `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, without which
+  `systemctl --user` can't find the user's systemd.
+- `tailscale set --operator=themiya` lets the user manage Serve, so `t3 pair --tailscale`
+  works without sudo.
+- **The script only installs what's missing.** Every tool updates itself, and T3's
+  update button updates every connected server, so the script doesn't fight them.
+  Re-running it took 2 seconds and didn't restart anything.
+
+Logging in is the one thing that can't be scripted: `codex login --device-auth` and
+`agent login` each give a link and a code to approve in a browser.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
   annoying, build it in GitHub Actions instead.
 - coop runs as a KVM virtual machine: find out what stopped it on 2026-10-20 (host power
   loss or the host stopping the VM), and set the VM to start automatically when the host boots.
-- Agents on every node, then Tailnet Lock (step 9).
-- bird: run its bootstrap (Doppler token, Vector) next time it's on.
+- Tailnet Lock (step 9).
+- bird: set its Doppler token and run the full bootstrap (Vector).
+- coop runs an older T3 Code (0.0.46) than bird (0.1.1): align them with T3's update button.
 - On coop, earlyoom vs Kubernetes memory handling (Phase 2).
 - Pod logs: Vector DaemonSet (Phase 2).
