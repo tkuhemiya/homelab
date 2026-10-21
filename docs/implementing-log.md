@@ -554,6 +554,15 @@ How it runs:
 Logging in is the one thing that can't be scripted: `codex login --device-auth` and
 `agent login` each give a link and a code to approve in a browser.
 
+**bird thought it was coop.** Its Tailscale name was `bird`, but `hostname` said `coop`:
+bird was set up from a copy of coop's disk. Before renaming I checked the things a clone
+copies that break a Kubernetes cluster: `/etc/machine-id`, the MAC address and the SSH
+host keys. All three were different, so only the name needed fixing (`hostnamectl
+set-hostname bird` and the `127.0.1.1` line in `/etc/hosts`). Tailscale keeps the OS
+hostname it read at startup until `tailscaled` restarts; I restarted it with a
+`systemd-run` timer so my own SSH session over Tailscale wasn't cut off mid-command.
+bird's bootstrap now sets the name.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
