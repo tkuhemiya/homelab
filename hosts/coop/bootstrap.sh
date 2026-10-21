@@ -5,3 +5,4 @@ cd "$(dirname "$0")"
 
 ../common/bootstrap.sh
 ../common/vector.sh
+../common/agents.sh
