@@ -21,19 +21,19 @@ endpoints:
   - name: cli-proxy-api
     group: vp2
     url: http://vp2:8317/v1/models
-    interval: 1m
+    interval: 2h
     conditions:
       - "[STATUS] == 200"
       - "len([BODY].data) > 0"
     alerts:
       - type: ntfy
 
-  # A real model call through the gateway. Every 30 minutes, to spare free quota.
+  # A real model call through the gateway. Every 2 hours, to spare free quota.
   - name: llm-roundtrip
     group: vp2
     url: http://vp2:8317/v1/chat/completions
     method: POST
-    interval: 30m
+    interval: 2h
     headers:
       Content-Type: application/json
     body: '{"model":"gpt-oss-20b","messages":[{"role":"user","content":"Reply with exactly: ok"}],"max_tokens":50}'
@@ -48,7 +48,7 @@ endpoints:
   - name: ssh
     group: coop
     url: tcp://coop:22
-    interval: 1m
+    interval: 10m
     conditions:
       - "[CONNECTED] == true"
     alerts:
@@ -57,7 +57,7 @@ endpoints:
   - name: ssh
     group: vp2
     url: tcp://vp2:22
-    interval: 1m
+    interval: 10m
     conditions:
       - "[CONNECTED] == true"
     alerts:
@@ -67,7 +67,7 @@ endpoints:
   - name: ssh
     group: bird
     url: tcp://bird:22
-    interval: 5m
+    interval: 30m
     conditions:
       - "[CONNECTED] == true"
 {{- if .HEALTHCHECKS_PING_URL }}
@@ -77,7 +77,7 @@ endpoints:
   - name: healthchecks-ping
     group: vp1
     url: "{{ .HEALTHCHECKS_PING_URL }}"
-    interval: 5m
+    interval: 30m
     conditions:
       - "[STATUS] == 200"
 {{- end }}

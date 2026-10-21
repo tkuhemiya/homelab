@@ -403,7 +403,7 @@ answered a test request through the gateway. The aliases changed in the process
 
 ### Uptime monitoring: Gatus on vp1
 
-Gatus checks the lab's services every minute and sends alerts. It runs on vp1 so it
+Gatus checks the lab's services on a schedule and sends alerts. It runs on vp1 so it
 stays up when the home internet goes down. Its UI is at `http://vp1:8080`, tailnet
 only.
 
@@ -475,6 +475,23 @@ notification came at 07:30 when coop was switched back on.
 ping URL in Doppler as `HEALTHCHECKS_PING_URL`. Re-running the vp1 bootstrap added the
 `healthchecks-ping` check to Gatus, and the first ping succeeded. If vp1 or Gatus dies,
 the pings stop and Healthchecks emails me. That's the "who watches the watcher" piece.
+
+**Decision: check less often.** The first intervals (1 minute for the gateway and SSH)
+felt like too much for a homelab. Checks cost almost nothing, but finding out within
+minutes isn't worth much here either. What the interval really sets is how quickly I
+hear about an outage, roughly the interval times the failure threshold. New schedule:
+
+| Check | Was | Now | Alerts after about |
+|---|---|---|---|
+| gateway `/v1/models` | 1 min | 2 h | 6 h (3 failures) |
+| real model call | 30 min | 2 h | 4 h (2 failures) |
+| coop, vp2 SSH | 1 min | 10 min | 30 min |
+| bird SSH | 5 min | 30 min | never |
+| Healthchecks ping | 5 min | 30 min | depends on Healthchecks' grace period |
+
+That's about 400 checks a day instead of about 4,900, and 12 model calls instead of 48.
+The Healthchecks check's period had to be raised to match, or it would alert on every
+gap between pings.
 
 ### Trimming the VPS images
 
