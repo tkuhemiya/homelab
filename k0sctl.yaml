@@ -1,0 +1,42 @@
+
+apiVersion: k0sctl.k0sproject.io/v1beta1
+kind: Cluster
+metadata:
+  name: homelab
+spec:
+  hosts:
+    - role: controller+worker
+      noTaints: true                        # let normal pods run on coop too
+      privateAddress: 100.121.203.109       # coop's tailnet IP
+      openSSH:
+        address: coop
+        user: root
+      installFlags:
+        - --profile=homelab
+        - --kubelet-extra-args=--node-ip=100.121.203.109
+    - role: worker
+      privateAddress: 100.109.203.74        # bird's tailnet IP
+      openSSH:
+        address: bird
+        user: root
+      installFlags:
+        - --profile=homelab
+        - --kubelet-extra-args=--node-ip=100.109.203.74
+  k0s:
+    version: v1.36.4+k0s.1
+    config:
+      spec:
+        api:
+          address: 100.121.203.109
+          sans: [coop, coop.tailff3296.ts.net]
+        network:
+          provider: kuberouter
+          kuberouter:
+            autoMTU: false
+            mtu: 1200
+        workerProfiles:
+          - name: homelab
+            values:
+              failSwapOn: false
+              kubeReserved:   { cpu: 500m, memory: 1Gi }
+              systemReserved: { cpu: 500m, memory: 1Gi }
