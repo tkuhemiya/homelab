@@ -34,6 +34,9 @@ spec:
           kuberouter:
             autoMTU: false
             mtu: 1200
+            extraArgs:
+              overlay-encap: fou
+              overlay-encap-port: "5555"
         workerProfiles:
           - name: homelab
             values:
