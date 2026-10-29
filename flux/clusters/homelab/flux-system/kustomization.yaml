@@ -3,3 +3,18 @@ kind: Kustomization
 resources:
 - gotk-components.yaml
 - gotk-sync.yaml
+patches:
+# Flux can't do anything when coop (the API server) is down, so run it there
+# instead of paying 105 ms per API call from bird.
+- patch: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: all
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: coop
+  target:
+    kind: Deployment

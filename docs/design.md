@@ -208,6 +208,7 @@ homelab/
   cluster/
     k0sctl.yaml     # node list, roles, k0s config
   flux/
+    clusters/homelab/ # Flux's own manifests and one Kustomization per area below
     infrastructure/ # CNI, tailscale-operator, storage, observability
     apps/           # workloads and experiments, one folder each
   burst/

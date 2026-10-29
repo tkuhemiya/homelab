@@ -759,6 +759,41 @@ config change never reaches a node that already has one. A fresh cluster would g
 1280. Fixing it on these nodes means deleting the file, restarting kube-router and
 recreating the pods.
 
+### Flux
+
+Flux is a set of controllers that run in the cluster, fetch the Git repository about
+once a minute and make the cluster match it. Nothing pushes to the cluster, so it works
+behind NAT. It also reverts manual `kubectl` edits to objects it manages, and deletes
+objects whose files were deleted from the repo. Two objects do the work: a
+`GitRepository` says where to fetch from, and a `Kustomization` says which folder to
+apply.
+
+**Steps.**
+
+1. Installed the `flux` CLI v2.10.0 on coop, checking the release's SHA-256.
+2. `flux check --pre` passed: it wants Kubernetes 1.35 or newer and the cluster is 1.36.4.
+3. `flux bootstrap github` into `flux/clusters/homelab`, using the GitHub login `gh`
+   already had on coop, so no new token was created. It commits Flux's own manifests
+   to the repo, installs them, adds a read-only deploy key to the repo and applies
+   a sync that points back at the same repo. From then on Flux manages itself, so a
+   Flux upgrade is a normal commit.
+
+**Decision: three controllers, not four.** I dropped the notification controller with
+`--components`, since alerts already go through Gatus and ntfy. One flag brings it back.
+The three idle at 16, 30 and 23 MiB, about 70 MiB together.
+
+**Problem: Flux put its controllers on bird.** `kustomize-controller` landed there.
+bird is off most days, and when coop is down Flux can do nothing anyway because the API
+server lives there. From bird each API call also costs 105 ms. A patch in
+`flux-system/kustomization.yaml` now pins every Flux Deployment to coop. It lives in the
+Kustomization, not in the generated `gotk-components.yaml`, so a Flux upgrade keeps it.
+
+**Layout.** `flux/clusters/homelab/` holds Flux's own files plus one `Kustomization`
+per area. `apps.yaml` points at `flux/apps/`. An `infrastructure.yaml` comes with the
+first infrastructure component, the Tailscale operator, because an empty folder isn't a
+valid Kustomization. The first test app is `whoami`, a tiny web server that prints which
+pod answered, with two replicas spread over both nodes.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
