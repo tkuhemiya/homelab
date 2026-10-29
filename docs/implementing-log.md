@@ -871,6 +871,39 @@ External Secrets retries failed syncs with a growing delay, so it hadn't looked 
 By the time I checked, the store was `Valid`, and annotating the ExternalSecret with
 `force-sync` made it sync at once. The Secret is now owned by the ExternalSecret.
 
+### Scripting what I'd done by hand
+
+- `hosts/coop/cluster-tools.sh` installs k0sctl, kubectl and flux at pinned versions, each
+  checked against the published SHA-256. Re-running it left k0sctl and flux alone and moved
+  kubectl from 1.37.1 to 1.36.4, which is the cluster's version.
+- `hosts/coop/cluster-access.sh` gives `themiya` an SSH key on coop, authorises it for root
+  and records the nodes' host keys. Run twice, no file changed and `authorized_keys` still
+  has one line. Both scripts are called from coop's bootstrap.
+- `cluster/pod-routes.sh` reads each node's `podCIDR` from Kubernetes and sets the
+  Tailscale route settings over SSH.
+- `docs/runbook-cluster.md` has the order for a rebuild.
+
+**Problem: the first version of `pod-routes.sh` skipped coop.** It printed only bird.
+`ssh` inside a `while read` loop reads the loop's input, so the first call swallowed the
+remaining lines. `ssh -n` fixes it. **Lesson:** use `ssh -n` in any loop fed from a
+pipe or a heredoc, and test with more than one item.
+
+### The MTU, finished
+
+The nodes still had 1200 because kube-router only writes its CNI file when it's missing.
+I deleted `/etc/cni/net.d/10-kuberouter.conflist` on both nodes, deleted the kube-router
+pods so the init container wrote it again from the ConfigMap, and restarted every
+workload that uses the pod network. A first `kubectl rollout restart` with a mix of
+`deploy/x` and `statefulset` arguments failed, so I redid it per resource.
+
+Afterwards no veth or the bridge was left at 1200. A ping with the Don't Fragment bit
+and 1,252 bytes of data, which is a 1,280-byte packet, crosses between the nodes in both
+directions, and 1,253 fails as it should. I also found my leftover iperf pod `hs` still
+running and deleted it.
+
+Side effect: after the restart both `whoami` replicas and the Tailscale proxy sit on bird.
+The spread is only a preference, and if bird goes off, whoami stops for about five minutes.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
@@ -880,5 +913,6 @@ By the time I checked, the store was `Valid`, and annotating the ExternalSecret 
 - On coop, earlyoom vs Kubernetes memory handling (Phase 2).
 - Keep DNS and chatty traffic on one site: node-local DNS caching, and zone labels for Korea and Sri Lanka.
 - A WebAssembly experiment: Wasmer next to runc through a containerd shim and a RuntimeClass. Same small Rust HTTP service as a container and as `.wasm`, compare cold start, memory and requests per second.
-- Add the Tailscale route settings and coop's self-SSH key to the bootstrap scripts once the network works.
+- Put the console's tailnet policy into `tailnet/policy.hujson`, which is still the default template without the tags.
+- Keep stateless apps like whoami on coop, or give bird a graceful shutdown so its pods move first.
 - Pod logs: Vector DaemonSet (Phase 2).
