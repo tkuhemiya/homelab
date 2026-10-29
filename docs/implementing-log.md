@@ -843,6 +843,34 @@ the first failure after about 2 minutes and reached 3 consecutive failures about
 **Gap found: `tailnet/policy.hujson` in the repo is still the default template.** The
 tags were added in the admin console and aren't in the repo copy.
 
+### External Secrets: Doppler into the cluster
+
+Copying secrets from Doppler into the cluster by hand went wrong twice, so External
+Secrets Operator now does it. An `ExternalSecret` in Git names the Kubernetes Secret to
+make and which Doppler entry fills each key, with no values in it. The operator's pods
+fetch the values and refresh them hourly. The one thing still done by hand is the
+Doppler service token the operator logs in with, because something has to hold the first key.
+
+- Chart 2.14.0, checksum matched the digest in the chart index. Three pods on coop use
+  about 107 MiB: 34 for the controller, 43 for the cert controller and 30 for the
+  webhook. The CRDs serve `external-secrets.io/v1`.
+- A `ClusterSecretStore` named `doppler` uses the Secret `doppler-token`. The token is a
+  read-only service token for `homelab/prd`, created as its own token named `k0s`, so it
+  can be revoked on its own.
+- `ExternalSecret operator-oauth` in the `tailscale` namespace takes over the Secret I had
+  made by hand. Values are 17 and 64 bytes, so no stray newline.
+- **Order matters, so there are three Kustomizations in a chain:** `external-secrets`
+  installs the operator and its CRDs, `secrets` holds the store and ExternalSecrets and
+  waits for it, and `infrastructure` waits for `secrets`. Putting them in one folder
+  can't work: the store's resources need the CRDs to exist before Flux can even validate
+  them. `secrets` has no `wait`, because the store is only ready once the token exists.
+
+**Not a problem: "Ready: False" right after creating the token.** I created the token
+Secret and listed the store seconds later and it still said `InvalidProviderConfig`.
+External Secrets retries failed syncs with a growing delay, so it hadn't looked again yet.
+By the time I checked, the store was `Valid`, and annotating the ExternalSecret with
+`force-sync` made it sync at once. The Secret is now owned by the ExternalSecret.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
