@@ -5,6 +5,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  dependsOn:
+    - name: infrastructure
   path: ./flux/apps
   prune: true
   wait: true
