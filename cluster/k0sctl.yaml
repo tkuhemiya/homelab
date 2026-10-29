@@ -33,10 +33,9 @@ spec:
           provider: kuberouter
           kuberouter:
             autoMTU: false
-            mtu: 1200
+            mtu: 1280                       # pod packets go straight into tailscale0, which is 1280
             extraArgs:
-              overlay-encap: fou
-              overlay-encap-port: "5555"
+              enable-overlay: "false"       # no tunnel; each node's pod range is a Tailscale subnet route
         workerProfiles:
           - name: homelab
             values:

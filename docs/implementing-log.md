@@ -623,6 +623,127 @@ a failure does stop the script.
 **Lesson:** "done" means the test in the roadmap passed, not that every step ran. All six
 paths now work, and all four bootstraps re-run with exit 0.
 
+## 2026-10-21: Phase 2, the k0s cluster
+
+### Getting coop and bird into a cluster
+
+k0sctl runs on coop and reads one file, `cluster/k0sctl.yaml`. k0sctl is the installer
+and kubectl is the client: k0sctl reaches the machines over SSH to install and change
+k0s, and kubectl talks to the API server to run things inside it. If the cluster is
+broken, kubectl can't help but k0sctl still can.
+
+**Problem: coop couldn't SSH to itself.** k0sctl connects to every host as root,
+including coop. `ssh root@coop` from coop failed with `Permission denied (publickey)`
+while `ssh root@bird` worked. Tailscale SSH only takes over connections that arrive
+from another machine; a machine connecting to itself goes to the normal OpenSSH
+server, which wants a key. Fix: an ed25519 key for `themiya` on coop, added to root's
+`authorized_keys`. This belongs in coop's bootstrap script.
+
+**Decision: pin everything to tailnet addresses.** `privateAddress` and
+`--node-ip` use the 100.x addresses. Without them each node advertises its own
+network, 10.77.20.2 for coop and 192.168.1.11 for bird, and the two can't reach each
+other. Other settings, each for a reason:
+
+- A single controller, because etcd needs three members for quorum and there are two nodes.
+- `noTaints` on coop, so ordinary pods can run on the controller too.
+- Reservations of 500m CPU and 1 GiB for Kubernetes's own components, and the same again
+  for the operating system, so pods can't starve the machine or the agents.
+- `failSwapOn: false`, so the nodes keep their 4 GB swap files.
+
+`k0sctl apply` took 4m13s, installed k0s v1.36.4 and both nodes showed Ready.
+
+### The first problem: pods on bird couldn't reach coop
+
+**Symptom.** CoreDNS and the konnectivity agent on bird stayed at 0/1, and
+`kubectl logs` for a pod on bird timed out. Node-to-node traffic was fine.
+
+**Diagnosis.** kube-router's default for pods on different subnets is IP-in-IP, which
+puts the pod's packet inside a new IP packet addressed node to node. tcpdump showed
+those packets leaving bird on `tailscale0` and never arriving on coop. Tailscale only
+carries TCP, UDP and ICMP, so it drops IP protocol 4.
+
+**Fix.** kube-router can wrap pod packets in UDP instead, called FOU. Two lines under
+`kuberouter.extraArgs`, `overlay-encap: fou` and `overlay-encap-port: "5555"`, and
+every pod was Ready. Pod-to-pod ping across the nodes then averaged 101.9 ms, against
+103.8 ms node to node, so the wrapping itself costs no latency anyone can measure.
+
+**Lesson:** changing the spec of a DaemonSet makes Kubernetes replace its pods on its
+own. I also ran `kubectl rollout restart` and it only rolled them a second time.
+
+### What k0s actually is
+
+k0s is one 252 MB binary. On start it unpacks 396 MB of programs into
+`/var/lib/k0s/bin`: kube-apiserver, kube-controller-manager, kube-scheduler, etcd,
+konnectivity-server, kubelet, containerd, runc and a pinned iptables. On coop, `k0s`
+runs the control plane as ordinary child processes, so `kubectl get pods` can't show
+them. Everything else, CoreDNS, kube-router, kube-proxy, the konnectivity agent and
+metrics-server, is a container image run as a pod. kubeadm clusters run the control
+plane as static pods instead. k0s's way keeps the API server up when containerd is
+broken, and costs you kubectl for debugging it.
+
+### A correction to the design: coop and bird are not in the same place
+
+I had assumed both machines were at home. coop is a server in Korea and bird is in
+Sri Lanka on home Wi-Fi, 105 ms apart over a direct Tailscale path. The design's
+"16 GB at home" and "home internet drops and both vanish" were wrong, and a Sri Lanka
+outage now takes out only bird. The latency matters for apps: each round trip across
+the two sites costs 105 ms, so chatty apps should stay on one node, and DNS lookups
+should be answered on the node that asks.
+
+### Choosing the pod network
+
+I first leaned towards Cilium, for the eBPF learning. Then I asked for the setup with
+the best performance for the least resources, ignoring the learning goal, and the
+answer changed.
+
+- **Latency is set by the path, not the plugin.** The 105 ms is Korea to Sri Lanka.
+  Per-packet costs in any plugin are microseconds.
+- **Memory is where the plugins differ.** Measured on coop: kube-router 69 MiB and
+  kube-proxy 38 MiB. I estimate Cilium at 100 to 200 MiB per node on top of that. This
+  is an estimate; I haven't installed it.
+- **Cilium's strength is thousands of pods.** At two nodes, iptables isn't a
+  bottleneck, so it would cost the most memory and return nothing measurable.
+
+**Decision: keep kube-router, turn its overlay off and let Tailscale carry pod
+traffic as subnet routes.** Each node advertises its own pod range, the other node
+accepts it, and the pod packet goes straight into WireGuard with no extra wrapper.
+The eBPF projects don't depend on this choice: Tetragon, the XDP firewall and the
+egress meter are all in Phase 5, and Cilium is still a Phase 4 swap.
+
+### Pod ranges as Tailscale subnet routes
+
+Per node, from Kubernetes' own `spec.podCIDR`: coop `10.244.0.0/24`, bird
+`10.244.1.0/24`. Settings, applied by hand on both: `--advertise-routes` for its own
+range, `--accept-routes` because Linux ignores subnet routes by default, and
+`--snat-subnet-routes=false` so pods see the real sender instead of the router's
+address. I approved the two routes once in the admin console. An approval covers one
+address block, not ports or pods.
+
+WireGuard drops any packet whose source isn't on the sender's allowed list. A pod
+packet leaving bird has a 10.244.1.x source, and coop only accepts it because the
+approved route puts that block on bird's list.
+
+**Test, with the overlay still on:**
+
+- bird's host to a coop pod: works, 103 ms, and tcpdump on coop shows the real source
+  address, `100.109.203.74`, so SNAT really is off.
+- The Mac to a pod on either node: works.
+- coop's host to a pod on bird: **fails.**
+- Largest unfragmented ping: 1,172 bytes of data, which is a 1,200-byte packet. That's
+  the `mtu: 1200` we set for the overlay.
+
+**Why coop to bird's pod fails.** tcpdump on bird shows the request arriving over
+`tailscale0` and the pod answering, but the answer leaves through kube-router's old
+tunnel `tun-...`. kube-router adds a policy rule, `from 10.244.1.0/24 lookup 77`, and
+that rule is checked before Tailscale's own routing table. Replies from pods take the
+old tunnel, and the request and reply travel different paths. The Mac works because
+the tunnel table has no entry for it. This is exactly what turning the overlay off
+should fix.
+
+**Next:** `cluster/k0sctl.yaml` now has `enable-overlay: "false"` and `mtu: 1280`, since
+pod packets go straight into `tailscale0`, whose MTU is 1280. Apply it, check that the
+old tunnels and the table 77 rule are gone, and run the same tests again.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
@@ -630,4 +751,7 @@ paths now work, and all four bootstraps re-run with exit 0.
 - coop runs as a KVM virtual machine: find out what stopped it on 2026-10-20 (host power
   loss or the host stopping the VM), and set the VM to start automatically when the host boots.
 - On coop, earlyoom vs Kubernetes memory handling (Phase 2).
+- Keep DNS and chatty traffic on one site: node-local DNS caching, and zone labels for Korea and Sri Lanka.
+- A WebAssembly experiment: Wasmer next to runc through a containerd shim and a RuntimeClass. Same small Rust HTTP service as a container and as `.wasm`, compare cold start, memory and requests per second.
+- Add the Tailscale route settings and coop's self-SSH key to the bootstrap scripts once the network works.
 - Pod logs: Vector DaemonSet (Phase 2).
