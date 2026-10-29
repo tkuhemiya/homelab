@@ -1,0 +1,15 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami
+  namespace: whoami
+spec:
+  ingressClassName: tailscale      # the operator creates a proxy that joins the tailnet as "whoami"
+  defaultBackend:
+    service:
+      name: whoami
+      port:
+        number: 80
+  tls:
+    - hosts:
+        - whoami                   # becomes https://whoami.tailff3296.ts.net with a real certificate
