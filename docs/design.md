@@ -204,14 +204,16 @@ The homelab repo on GitHub holds everything: host setup, the cluster definition,
 
 ```text
 homelab/
-  hosts/            # per-node setup outside k0s: tailscale, earlyoom, agents, CLIProxyAPI, Gatus
+  hosts/            # per-node setup outside k0s; common/ is shared, coop/ also installs the cluster tools
   cluster/
-    k0sctl.yaml     # node list, roles, k0s config
+    k0sctl.yaml     # node list, roles, k0s config, kube-router settings
+    pod-routes.sh   # publishes each node's pod range as a Tailscale subnet route
+  tailnet/          # the tailnet policy file
   flux/
     clusters/homelab/ # Flux's own manifests and one Kustomization per area below
     external-secrets/ # External Secrets Operator, with its Doppler service token Secret created by hand
     secrets/        # the Doppler ClusterSecretStore and ExternalSecrets, applied after the operator
-    infrastructure/ # CNI, tailscale-operator, storage, observability
+    infrastructure/ # tailscale-operator today; storage and observability later (the CNI is set in k0sctl.yaml)
     apps/           # workloads and experiments, one folder each
   burst/
     cli/            # burst CLI + MCP server, backend adapters, quota ledger
@@ -224,12 +226,15 @@ Flow: you or an agent push to `main`. Flux reconciles `flux/` into k0s, `k0sctl 
 
 ## Roadmap
 
+Not built yet, though described above: Beszel and Dozzle, Grafana Alloy, Langfuse, Tetragon, and the Tailscale API server proxy for agents (they use the admin kubeconfig on coop for now).
+
 Five phases, each finished when its "done when" holds. Phases 3 and 4 can run in parallel.
 
 1. **Foundation.** Create the homelab repo and the Doppler project with a single `prd` config and one service token per host. Write the tailnet policy (open between your devices, Tailscale SSH without browser re-auth). Set up earlyoom on the small nodes, and log shipping to Axiom. Put agents on coop and bird, CLIProxyAPI on vp2, and Gatus with its Healthchecks.io ping on vp1, all installed by their bootstrap scripts.
    - **Done when:** every node ships logs off-lab, and an agent on any node can reach every other node.
-2. **k0s on defaults.** Bring up coop as controller plus worker, and bird as a worker, through k0sctl. vp1 and vp2 stay outside the cluster. Install Flux and the Tailscale operator.
+2. **k0s on defaults.** Bring up coop as controller plus worker, and bird as a worker, through k0sctl. vp1 and vp2 stay outside the cluster. Install Flux, the Tailscale operator and External Secrets.
    - **Done when:** a test app is reachable on the tailnet only, and Gatus on vp1 alerts when you stop it.
+   - **Status:** done 2026-10-29. See `docs/implementing-log.md` and `docs/runbook-cluster.md`.
 3. **Burst stage 1.** Build the burst CLI with Modal and Cloud Run Jobs adapters first, then the quota ledger and the MCP server.
    - **Done when:** an agent launches a GPU job on Modal through MCP and gets its logs back.
 4. **Component swaps.** Move the CNI to Calico, then Cilium, then add storage and Linkerd, with one write-up per swap in `docs/`.

@@ -915,4 +915,17 @@ The spread is only a preference, and if bird goes off, whoami stops for about fi
 - A WebAssembly experiment: Wasmer next to runc through a containerd shim and a RuntimeClass. Same small Rust HTTP service as a container and as `.wasm`, compare cold start, memory and requests per second.
 - Put the console's tailnet policy into `tailnet/policy.hujson`, which is still the default template without the tags.
 - Keep stateless apps like whoami on coop, or give bird a graceful shutdown so its pods move first.
-- Pod logs: Vector DaemonSet (Phase 2).
+- Pod logs: Vector DaemonSet.
+
+## 2026-10-29: Docs against repo
+
+Before starting Phase 3 I compared `docs/design.md` with what's in the repo and on the
+cluster. The cluster matched the repo: both nodes Ready, every Flux Kustomization applied
+at the latest commit. The docs had drifted in four places: the Phase 2 line didn't mention
+External Secrets or say it was done, the layout lacked `tailnet/` and `pod-routes.sh` and
+claimed the CNI lived under `flux/infrastructure`, vp1's bootstrap comment said it installs
+Beszel (it doesn't), and the design described Beszel, Dozzle, Alloy, Langfuse, Tetragon and
+the API server proxy as if they existed. Fixed all four, and the roadmap now lists what's
+still unbuilt. coop's clone was also two commits behind; pulled it.
+
+Still true: `tailnet/policy.hujson` is the default template until the console's policy is pasted in.
