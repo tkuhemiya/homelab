@@ -8,6 +8,7 @@
 set -euo pipefail
 
 status=0
+# `ssh -n` below: without it ssh reads the loop's input and swallows the remaining nodes.
 while read -r node cidr; do
   if [ -z "$cidr" ]; then
     echo "$node: no podCIDR yet" >&2
@@ -15,7 +16,7 @@ while read -r node cidr; do
     continue
   fi
   echo "$node advertises $cidr"
-  ssh -o ConnectTimeout=10 "root@$node" \
+  ssh -n -o ConnectTimeout=10 "root@$node" \
     "tailscale set --advertise-routes=$cidr --accept-routes --snat-subnet-routes=false" ||
     { echo "$node: could not be reached, run this again when it is up" >&2; status=1; }
 done < <(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name} {.spec.podCIDR}{"\n"}{end}')
