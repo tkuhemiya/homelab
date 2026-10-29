@@ -794,6 +794,55 @@ first infrastructure component, the Tailscale operator, because an empty folder 
 valid Kustomization. The first test app is `whoami`, a tiny web server that prints which
 pod answered, with two replicas spread over both nodes.
 
+### The Tailscale operator
+
+The operator is a controller from Tailscale that watches the cluster for Services and
+Ingresses marked for the tailnet. Tailscale identity belongs to devices, and pods and
+Services have no tailnet address, so for each exposed Service it starts a small proxy
+pod that joins the tailnet as its own device. It needs an OAuth client to create
+those devices. Setup: two tags in the policy, `tag:k8s-operator` which may own
+`tag:k8s`, an OAuth client with write access to Services, Devices > Core and Auth Keys
+tagged `tag:k8s-operator`, and a HelmRelease pinned to chart 1.104.2, pinned to coop.
+I checked the downloaded chart's SHA-256 against the digest in Tailscale's repo index.
+
+**Problem: the secret was created empty.** The operator reads its OAuth client from a
+Secret named `operator-oauth` with keys `client_id` and `client_secret`. I gave a
+command using `read -rp`, which is bash. The Mac's shell is zsh, where `-p` means
+"read from a coprocess", so both reads failed, and `kubectl` created the Secret with
+two empty values. The operator crash-looped. Checking the byte length of each value
+showed 0 and 0.
+
+**Problem: a trailing newline gave a 401.** The credentials were already in Doppler, so
+I rebuilt the Secret from there, on coop as root, through temp files in RAM, without
+printing them. The first try used `doppler secrets get --plain`, which adds a newline
+to each value, and Tailscale answered `401 Unauthorized`. Wrapping each value in
+`printf %s "$(...)"` strips it, and the operator joined the tailnet as
+`homelab-operator`. **Lesson:** check the length of a credential, not just that it
+exists, and strip newlines before using a value as a file or a header.
+
+**Why Flux didn't delete the hand-made Secret.** Flux records what it applied from Git
+in the Kustomization's inventory: here the `tailscale` Namespace, the HelmRelease and
+the HelmRepository. Pruning only removes objects in that inventory. The Secret isn't in
+it, so Flux ignores it. Flux also uses server-side apply, so it only corrects fields it
+sets, and extra annotations added by `kubectl` stay. Deleting the Namespace from Git
+would still delete everything inside it, the Secret included.
+
+### Publishing whoami and the alert test
+
+An `Ingress` with `ingressClassName: tailscale` gives whoami its own tailnet device and
+a real certificate. `https://whoami.tailff3296.ts.net` answered 200 from the Mac and
+from vp1, and nothing is reachable from the public internet. I added it to Gatus with a
+2-minute check and the usual 3-failure threshold, and ran `gatus.sh` on vp1 by copying
+`hosts/vp1/` over, since the repo isn't cloned there.
+
+**Alert test.** To stop the app I suspended the `apps` Kustomization first, because
+Flux would put the replicas back at its next sync. Then I scaled whoami to 0. Gatus saw
+the first failure after about 2 minutes and reached 3 consecutive failures about
+7 minutes in. The script then resumed Flux and scaled back to 2.
+
+**Gap found: `tailnet/policy.hujson` in the repo is still the default template.** The
+tags were added in the admin console and aren't in the repo copy.
+
 ## Still open
 
 - Gatus version bumps rebuild from source (about 20 minutes cold on vp1). If that gets
