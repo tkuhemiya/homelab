@@ -15,7 +15,7 @@ One k0s cluster spans all four machines. Agents run on bare metal beside it. Fre
 
 ## Machines and roles
 
-coop holds the control plane and the heavy lifting, bird is a worker that can drop out, and the always-on VPSes carry what must survive a home outage. RAM is the binding constraint: about 18 GB total, 16 GB of it at home.
+coop holds the control plane and the heavy lifting, bird is a worker that can drop out, and the always-on VPSes carry what must survive a home outage. RAM is the binding constraint: about 18 GB total, 16 GB of it on coop and bird. Those two sit in different countries: coop is a server in Korea and bird is a home machine in Sri Lanka, about 105 ms apart over a direct Tailscale path. Keep chatty traffic and DNS lookups within one site.
 
 | Node | CPU / RAM | k0s role | Also runs (outside k0s) |
 | --- | --- | --- | --- |
@@ -60,19 +60,20 @@ The whole cluster is described in one k0sctl YAML in homelab and bootstrapped ov
 - Shorten that 5-minute wait for stateless apps with `tolerationSeconds` on the not-ready and unreachable tolerations.
 - Keep stateful pods off bird. A local volume can't follow its pod to another node.
 - **coop drops out (controller):** pods on other nodes keep running and serving, but nothing gets rescheduled, Flux stops reconciling and `kubectl` doesn't answer. When coop returns, the control plane picks up where it left off and reconciles any drift.
-- **Home internet drops:** coop and bird both vanish. vp1 and vp2 are outside the cluster, so CLIProxyAPI on vp2 keeps working and Gatus on vp1 alerts you.
+- **bird's home internet drops:** same as bird dropping out. coop keeps running, so the control plane stays up. vp1 and vp2 are outside the cluster, so CLIProxyAPI on vp2 keeps working and Gatus on vp1 alerts you.
 - **Protect etcd:** an old machine losing power mid-write is how etcd gets corrupted. Schedule k0s backup to R2 and practise one restore.
 
 ### Tailscale gotchas, each one a lesson
 
 - Pin node IPs and the CNI to `tailscale0`; otherwise nodes advertise their LAN or public addresses.
-- Tailscale's MTU is 1280, so the pod overlay inside it needs a smaller MTU or large packets silently disappear.
+- Tailscale's MTU is 1280, and it carries only TCP, UDP and ICMP. kube-router's default IP-in-IP tunnel is IP protocol 4, which Tailscale drops silently, so pods on different nodes can't talk.
+- The fix is to skip tunnels. Each node advertises its own pod range as a Tailscale subnet route (`--advertise-routes`), accepts the other's (`--accept-routes`), turns SNAT off (`--snat-subnet-routes=false`) so pods keep their real source addresses, and kube-router runs with `enable-overlay: false` and a pod MTU of 1280. Routes are approved once in the admin console. Measured: pod-to-pod throughput matches plain node-to-node.
 - Konnectivity, which k0s ships by default, is what lets the controller reach kubelets on workers behind NAT.
 - Expose services to the tailnet with the Tailscale Kubernetes operator. Each exposed service becomes a tailnet device, and the free plan caps tagged resources at 50.
 
 ### Component-swap learning path
 
-1. Run k0s defaults: kube-router CNI, CoreDNS, metrics-server, konnectivity.
+1. Run k0s defaults: kube-router CNI with its overlay off and Tailscale subnet routes carrying pod traffic, CoreDNS, metrics-server, konnectivity.
 2. Swap the CNI to Calico and learn IPAM, BGP versus VXLAN, and network policy.
 3. Swap the CNI to Cilium on coop and bird to learn eBPF datapaths, Hubble and kube-proxy replacement.
 4. Add storage: local-path first, then something replicated across coop and bird.

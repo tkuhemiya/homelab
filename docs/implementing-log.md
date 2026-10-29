@@ -740,9 +740,24 @@ old tunnel, and the request and reply travel different paths. The Mac works beca
 the tunnel table has no entry for it. This is exactly what turning the overlay off
 should fix.
 
-**Next:** `cluster/k0sctl.yaml` now has `enable-overlay: "false"` and `mtu: 1280`, since
-pod packets go straight into `tailscale0`, whose MTU is 1280. Apply it, check that the
-old tunnels and the table 77 rule are gone, and run the same tests again.
+**Fix and result.** `cluster/k0sctl.yaml` now has `enable-overlay: "false"` and `mtu: 1280`.
+After `k0sctl apply`, the kube-router pods restarted with the new flag, and the old
+tunnel interfaces and the table 77 rule were gone from both nodes. Same tests again:
+
+- Both directions between a node and a pod on the other node work, at 114 to 117 ms.
+- Pod to pod across nodes works in both directions, 105 ms average.
+- Throughput with iperf3, bird to coop, 10 seconds. Node to node over plain Tailscale:
+  4.8 Mbit/s with one stream, 8.9 with four. Pod to pod with no tunnel: 7.7 with one
+  stream, 7.7 with four. The pod network adds nothing measurable. The ceiling is the
+  link, about 8 to 9 Mbit/s up from Sri Lanka. I never measured the FOU overlay, so
+  there's no before and after, only this.
+
+**Problem: the MTU change didn't take effect.** The node's CNI file
+`/etc/cni/net.d/10-kuberouter.conflist` still says 1200 even though the ConfigMap says
+1280. kube-router's init container only copies the file when it doesn't exist, so a
+config change never reaches a node that already has one. A fresh cluster would get
+1280. Fixing it on these nodes means deleting the file, restarting kube-router and
+recreating the pods.
 
 ## Still open
 
