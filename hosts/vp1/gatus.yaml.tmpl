@@ -63,6 +63,17 @@ endpoints:
     alerts:
       - type: ntfy
 
+  # Test app in k0s, published on the tailnet by the Tailscale operator.
+  - name: whoami
+    group: k0s
+    url: https://whoami.tailff3296.ts.net/
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*Hostname:*)"
+    alerts:
+      - type: ntfy
+
   # bird is switched off most days: tracked, never alerted on.
   - name: ssh
     group: bird
